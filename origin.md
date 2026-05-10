@@ -53,9 +53,9 @@ macOS 对第三方应用的限制比较严格。用户下载 App 之后，常见
 
 ## 风险说明
 
-- sudo xattr 和 sudo codesign 会请求管理员密码
+- sudo xattr 和 sudo codesign 会请求管理员密码，但脚本会先让用户选择继续还是跳过
 - sudo spctl --master-disable 会关闭 Gatekeeper，仅建议作为最后手段
-- 在尝试关闭 Gatekeeper 之前，脚本会先提示副作用，再让用户自己选择是否继续
+- 在尝试关闭 Gatekeeper 之前，脚本会先提示副作用，再让用户自己选择是否继续；真正执行前也可以再跳过
 - 如果执行了 spctl --master-disable，恢复命令是：
 
 ```bash
