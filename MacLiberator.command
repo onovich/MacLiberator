@@ -20,21 +20,27 @@ print_header() {
     echo
 }
 
-ask_yes_no() {
+choose_option() {
     local prompt="$1"
+    local first_option="$2"
+    local second_option="$3"
     local answer
 
     while true; do
-        read -r -p "$prompt" answer
+        echo "$prompt"
+        echo "1) $first_option"
+        echo "2) $second_option"
+        read -r -p "请选择 1 或 2，然后按回车: " answer
         case "$answer" in
-            y|Y)
+            1)
                 return 0
                 ;;
-            n|N|"")
+            2)
                 return 1
                 ;;
             *)
-                echo "请输入 y 后回车，或者直接回车跳过。"
+                echo "请输入 1 或 2。"
+                echo
                 ;;
         esac
     done
@@ -67,11 +73,10 @@ trim_input() {
 pause_for_result() {
     echo
     echo "请先回到桌面，试着再次打开这个 App。"
-    if ask_yes_no "如果现在已经能打开了，输入 y 后回车结束；如果还不行，直接回车继续: "; then
+    if choose_option "现在情况如何？" "已经能打开了，结束" "还不行，继续尝试"; then
         log "用户确认 App 已可打开，流程提前结束。"
         echo
         echo "已经结束。祝你使用顺利。"
-        echo "如果之后还想回看过程，日志在: $LOG_FILE"
         exit 0
     fi
 }
@@ -95,6 +100,28 @@ run_step() {
     echo
     echo "$name 没有成功。"
     echo "没关系，我会继续尝试下一种办法。"
+    return 1
+}
+
+run_gatekeeper_step() {
+    local command="$1"
+
+    log "开始步骤: 关闭 Gatekeeper"
+    log "执行命令: $command"
+
+    if eval "$command" >>"$LOG_FILE" 2>&1; then
+        log "步骤成功: 关闭 Gatekeeper"
+        echo
+        echo "状态：已成功尝试关闭系统限制。"
+        echo "现在请再去打开 App 试试看。"
+        echo "如果你之后想恢复默认限制，可以执行: sudo spctl --master-enable"
+        return 0
+    fi
+
+    log "步骤失败: 关闭 Gatekeeper"
+    echo
+    echo "状态：这一步没有成功执行。"
+    echo "你可以先不继续折腾，回头再找人帮你看看。"
     return 1
 }
 
@@ -163,10 +190,11 @@ find_executable_path() {
 confirm_gatekeeper_step() {
     echo
     echo "前面的办法都已经试过了。"
-    echo "下面这个方法作用更强，但会放宽这台 Mac 对应用的限制。"
-    echo "只建议在你确认 App 来源可靠时再继续。"
+    echo "最后这一步会放宽这台 Mac 对应用的限制。"
+    echo "副作用是：之后这台机器打开第三方 App 会更容易，不只影响当前这个 App。"
+    echo "只有在你确认这个 App 来源可靠时，才建议继续。"
     echo
-    ask_yes_no "如果要继续这一步，输入 y 后回车；如果先不做，直接回车: "
+    choose_option "要不要继续这一步？" "继续尝试" "先跳过"
 }
 
 main() {
@@ -233,17 +261,14 @@ main() {
 
     if confirm_gatekeeper_step; then
         need_sudo_notice "关闭 Gatekeeper"
-        run_step "关闭 Gatekeeper" "sudo spctl --master-disable"
-        echo
-        echo "这一步已经试过了。"
-        echo "如果你之后想恢复默认限制，可以执行: sudo spctl --master-enable"
+        run_gatekeeper_step "sudo spctl --master-disable"
     else
         log "用户拒绝执行 Gatekeeper 步骤。"
     fi
 
     echo
     echo "这次可自动尝试的办法已经走完。"
-    echo "如果 App 还是打不开，可以把日志发给懂技术的人帮你看：$LOG_FILE"
+    echo "如果 App 还是打不开，建议先别反复尝试，换个时间再处理。"
 }
 
 main "$@"
