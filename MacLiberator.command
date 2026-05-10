@@ -191,7 +191,7 @@ confirm_gatekeeper_step() {
     echo "前面的办法都已经试过了。"
     echo "最后这一步会放宽这台 Mac 对应用的限制。"
     echo "副作用是：之后这台机器打开第三方 App 会更容易，不只影响当前这个 App。"
-    echo "只有在你确认这个 App 来源可靠时，才建议继续。"
+    echo "只有在你确认风险时，才建议继续。"
     echo
     choose_option "要不要继续这一步？" "继续尝试" "先跳过"
 }
