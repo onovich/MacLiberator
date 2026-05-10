@@ -13,10 +13,31 @@ log() {
 print_header() {
     echo
     echo "MacLiberator"
-    echo "用于帮助排查 macOS 第三方 App 无法打开的问题。"
+    echo "帮你一步一步尝试修复 macOS 上打不开的 App。"
     echo ""
-    echo "执行策略：先尝试文件级修复，再决定是否执行系统级高风险步骤。"
+    echo "不用自己查命令，我会按顺序帮你试。"
+    echo "如果前面的方法已经解决，就可以直接结束。"
     echo
+}
+
+ask_yes_no() {
+    local prompt="$1"
+    local answer
+
+    while true; do
+        read -r -p "$prompt" answer
+        case "$answer" in
+            y|Y)
+                return 0
+                ;;
+            n|N|"")
+                return 1
+                ;;
+            *)
+                echo "请输入 y 后回车，或者直接回车跳过。"
+                ;;
+        esac
+    done
 }
 
 trim_input() {
@@ -44,13 +65,13 @@ trim_input() {
 }
 
 pause_for_result() {
-    local answer
     echo
-    read -r -p "现在请尝试打开 App。若已经成功打开，输入 y 结束；否则直接回车继续: " answer
-    if [[ "$answer" =~ ^[Yy]$ ]]; then
+    echo "请先回到桌面，试着再次打开这个 App。"
+    if ask_yes_no "如果现在已经能打开了，输入 y 后回车结束；如果还不行，直接回车继续: "; then
         log "用户确认 App 已可打开，流程提前结束。"
         echo
-        echo "修复流程结束。日志位置: $LOG_FILE"
+        echo "已经结束。祝你使用顺利。"
+        echo "如果之后还想回看过程，日志在: $LOG_FILE"
         exit 0
     fi
 }
@@ -64,22 +85,25 @@ run_step() {
 
     if eval "$command" >>"$LOG_FILE" 2>&1; then
         log "步骤成功: $name"
-        echo "已完成: $name"
+        echo
+        echo "$name 已尝试完成。"
         pause_for_result
         return 0
     fi
 
     log "步骤失败: $name"
-    echo "步骤失败: $name"
-    echo "详细输出已记录到 $LOG_FILE"
+    echo
+    echo "$name 没有成功。"
+    echo "没关系，我会继续尝试下一种办法。"
     return 1
 }
 
 need_sudo_notice() {
     local name="$1"
     echo
-    echo "接下来会请求管理员密码: $name"
-    echo "如果你不想继续，可以在密码提示时按 Control+C 退出。"
+    echo "接下来会尝试：$name"
+    echo "系统可能会让你输入开机密码。输入时屏幕上不显示内容，这是正常的。"
+    echo "如果你现在不想继续，按 Control+C 就可以退出。"
     echo
 }
 
@@ -137,14 +161,12 @@ find_executable_path() {
 }
 
 confirm_gatekeeper_step() {
-    local answer
     echo
-    echo "最后手段：关闭 Gatekeeper。"
-    echo "这会修改整个系统的安全策略，不只影响当前 App。"
-    echo "恢复命令: sudo spctl --master-enable"
+    echo "前面的办法都已经试过了。"
+    echo "下面这个方法作用更强，但会放宽这台 Mac 对应用的限制。"
+    echo "只建议在你确认 App 来源可靠时再继续。"
     echo
-    read -r -p "仅在前面步骤都无效时继续。确定执行吗？输入 yes 继续: " answer
-    [[ "$answer" == "yes" ]]
+    ask_yes_no "如果要继续这一步，输入 y 后回车；如果先不做，直接回车: "
 }
 
 main() {
@@ -156,7 +178,9 @@ main() {
     log "启动 MacLiberator"
 
     if [[ -z "$raw_input" ]]; then
-        echo "把 .app 拖到这个窗口，或直接输入 App 路径。"
+        echo "请把需要修复的 App 拖到这个窗口里。"
+        echo "看到窗口里出现一整行路径后，按回车。"
+        echo "也可以直接粘贴路径，再按回车。"
         read -r raw_input
     fi
 
@@ -164,49 +188,62 @@ main() {
 
     if ! app_path="$(resolve_app_path "$raw_input")"; then
         log "无法识别有效的 .app 路径: $raw_input"
-        echo "未识别到有效的 .app 路径。请重新运行，并传入 .app 或包内文件路径。"
+        echo "我没有识别到有效的 App 路径。"
+        echo "请重新运行一次，把 .app 拖进窗口后再按回车。"
         exit 1
     fi
 
     log "目标 App: $app_path"
-    echo "目标 App: $app_path"
+    echo
+    echo "已收到这个 App："
+    echo "$app_path"
 
     if exec_path="$(find_executable_path "$app_path")"; then
         log "识别到可执行文件: $exec_path"
+        echo
+        echo "先试最温和的一步：补上打开权限。"
         run_step "修复可执行权限" "chmod +x \"$exec_path\""
     else
         log "未能定位可执行文件，跳过 chmod 步骤。"
-        echo "未能自动定位 $app_path/Contents/MacOS 下的可执行文件，已跳过 chmod。"
+        echo
+        echo "没有找到 App 里面真正的启动文件，这一步先跳过。"
     fi
 
     if xattr "$app_path" 2>/dev/null | grep -qx 'com.apple.quarantine'; then
+        echo
+        echo "接着试试清掉系统对这个 App 的下载限制。"
         need_sudo_notice "移除 quarantine 隔离属性"
         run_step "移除 quarantine 隔离属性" "sudo xattr -rd com.apple.quarantine \"$app_path\""
     else
         log "未发现 quarantine 属性，跳过 xattr 步骤。"
-        echo "未检测到 quarantine 属性，已跳过。"
+        echo
+        echo "没有发现下载限制标记，这一步跳过。"
     fi
 
     if command -v codesign >/dev/null 2>&1; then
+        echo
+        echo "再试一种常见修复方式。"
         need_sudo_notice "重新签名 App"
         run_step "重新签名 App" "sudo codesign --force --deep --sign - \"$app_path\""
     else
         log "系统缺少 codesign 命令，跳过重签名。"
-        echo "当前系统缺少 codesign，已跳过重签名步骤。"
+        echo
+        echo "你的系统当前不能执行这一步，所以先跳过。"
     fi
 
     if confirm_gatekeeper_step; then
         need_sudo_notice "关闭 Gatekeeper"
         run_step "关闭 Gatekeeper" "sudo spctl --master-disable"
         echo
-        echo "如果后续想恢复系统默认策略，请执行: sudo spctl --master-enable"
+        echo "这一步已经试过了。"
+        echo "如果你之后想恢复默认限制，可以执行: sudo spctl --master-enable"
     else
         log "用户拒绝执行 Gatekeeper 步骤。"
     fi
 
     echo
-    echo "所有预设步骤已执行完毕。"
-    echo "若 App 仍无法打开，请查看日志: $LOG_FILE"
+    echo "这次可自动尝试的办法已经走完。"
+    echo "如果 App 还是打不开，可以把日志发给懂技术的人帮你看：$LOG_FILE"
 }
 
 main "$@"
