@@ -82,7 +82,7 @@ run_step() {
     if eval "$command" >>"$LOG_FILE" 2>&1; then
         log "步骤成功: $name"
         echo
-        echo "$name。"
+        echo "${name}。"
         pause_for_result
         return 0
     fi
@@ -119,10 +119,9 @@ run_gatekeeper_step() {
 need_sudo_notice() {
     local name="$1"
     echo
-    echo "准备$name"
+    echo "准备${name}"
     echo "接下来系统可能会让你输入开机密码，并回车。"
     echo "输入时屏幕上不显示内容，这是正常的。"
-    echo "如果你现在不想继续，按 Control+C 或关闭窗口就可以退出。"
     echo
 }
 
@@ -193,6 +192,9 @@ confirm_gatekeeper_step() {
     echo "副作用是：之后这台机器打开第三方 App 会更容易，不只影响当前这个 App。"
     echo "只有在你确认风险时，才建议继续。"
     echo
+    echo "接下来系统可能会让你输入开机密码，并回车。"
+    echo "输入时屏幕上不显示内容，这是正常的。"
+    echo
     choose_option "要不要继续这一步？" "继续尝试" "先跳过"
 }
 
@@ -239,8 +241,6 @@ main() {
         fi
     else
         log "未发现 quarantine 属性，跳过 xattr 步骤。"
-        echo
-        echo "没有发现下载限制标记，这一步跳过。"
     fi
 
     if command -v codesign >/dev/null 2>&1; then
@@ -260,20 +260,22 @@ main() {
     fi
 
     if confirm_gatekeeper_step; then
-        if confirm_sudo_step "关闭 Gatekeeper"; then
-            run_gatekeeper_step "sudo spctl --master-disable"
-        else
-            log "用户在密码提示前跳过步骤: 关闭 Gatekeeper"
+        if eval "sudo spctl --master-disable" >>"$LOG_FILE" 2>&1; then
+            log "步骤成功: 关闭 Gatekeeper"
             echo
-            echo "已跳过这一步。"
+            echo "状态：已成功尝试关闭系统限制。"
+            echo "现在请再去打开 App 试试看。"
+            echo "如果你之后想恢复默认限制，可以执行: sudo spctl --master-enable"
+        else
+            log "步骤失败: 关闭 Gatekeeper"
+            echo
+            echo "状态：这一步没有成功执行。"
+            echo "你可以先不继续折腾，回头再找人帮你看看。"
         fi
     else
         log "用户拒绝执行 Gatekeeper 步骤。"
     fi
 
-    echo
-    echo "这次可自动尝试的办法已经走完。"
-    echo "如果 App 还是打不开，建议先别反复尝试，换个时间再处理。"
 }
 
 main "$@"
